@@ -79,11 +79,32 @@ class Game:
         self.friction = friction
         self.restitution = restitution
         self.running = True
+        self.waiting = True
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
         self.players = (Player(WIDTH * 0.1, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed, pygame.K_w, pygame.K_s),
                         Player(WIDTH * 0.9, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed, pygame.K_PAGEUP, pygame.K_PAGEDOWN))
         self.ball = Ball(WIDTH/2, HEIGHT/2, WIDTH * 0.02, init_speed, max_speed)
+
+    def draw(self):
+        self.screen.fill("white")
+        pygame.draw.rect(self.screen, "black", self.players[0].rect)
+        pygame.draw.rect(self.screen, "black", self.players[1].rect)
+        pygame.draw.circle(self.screen, "black", self.ball.pos, self.ball.radius)
+
+        if pygame.font:
+            if self.waiting:
+                font = pygame.font.Font(None, 128)
+                text = font.render("Press ENTER to start", True, "black")
+                pos = text.get_rect(centerx=self.screen.get_width()/2, centery=self.screen.get_height()/4)
+                self.screen.blit(text, pos)
+            # else:
+            font = pygame.font.Font(None, 64)
+            text = font.render(f"{self.players[0].score} - {self.players[1].score}", True, "black")
+            pos = text.get_rect(centerx=self.screen.get_width()/2, y=10)
+            self.screen.blit(text, pos)
+
+        pygame.display.flip()
 
     def check_collisions(self):
         for player in self.players:
@@ -118,15 +139,17 @@ class Game:
                 player.velocity = 0
 
         # ball
-        status = self.ball.move(dt)
-        if status != -1:
+        score = self.ball.move(dt)
+        if score != -1:
             self.ball.reset()
             self.players[0].reset()
             self.players[1].reset()
-            self.players[status].score += 1
-            if self.players[status].score == self.max_score:
-                print(f"Player {status + 1} wins!")
-                return status
+            self.players[score].score += 1
+            self.waiting = True
+            if self.players[score].score == self.max_score:
+                self.players[0].score = 0
+                self.players[1].score = 0
+                return score
         
         self.check_collisions()
         return -1
@@ -138,24 +161,17 @@ class Game:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
-
-            if self.update(dt) != -1:
-                self.running = False
+                elif event.type == pygame.KEYDOWN and self.waiting:
+                    self.waiting = False
+            
+            if not self.waiting:
+                winner = self.update(dt)
+                if winner != -1:
+                    print(f"Player {winner + 1} wins!")
+                    self.waiting = True
 
             self.draw()
         pygame.quit()
-
-    def draw(self):
-        self.screen.fill("white")
-        pygame.draw.rect(self.screen, "black", self.players[0].rect)
-        pygame.draw.rect(self.screen, "black", self.players[1].rect)
-        pygame.draw.circle(self.screen, "black", self.ball.pos, self.ball.radius)
-        if pygame.font:
-            font = pygame.font.Font(None, 64)
-            text = font.render(f"{self.players[0].score} - {self.players[1].score}", True, "black")
-            pos = text.get_rect(centerx=self.screen.get_width()/2, y=10)
-            self.screen.blit(text, pos)
-        pygame.display.flip()
 
 if __name__ == "__main__":
     game = Game()
