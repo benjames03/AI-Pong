@@ -47,59 +47,53 @@ class Ball:
         self.speed = BALL_SPEED
         self.radius = r
         self.orig = (x, y)
-        self.rect = pygame.Rect(x - r, y - r, 2 * r, 2 * r)
+        self.pos = pygame.Vector2(x, y)
         self.vel = pygame.Vector2(random.random() - 0.5, random.random() - 0.5)
         self.vel.scale_to_length(self.speed)
 
     def update(self, dt):
-        self.rect.x += self.vel.x * dt
-        self.rect.y += self.vel.y * dt
+        self.pos.x += self.vel.x * dt
+        self.pos.y += self.vel.y * dt
 
         # wall hit
-        if self.rect.y < 0:
-            self.rect.y = -self.rect.y
+        if self.pos.y - self.radius < 0:
+            self.pos.y = 2 * self.radius - self.pos.y
             self.vel.y *= -1
-        if self.rect.y + 2 * self.radius > SCREEN_HEIGHT:
-            self.rect.y = 2 * SCREEN_HEIGHT - self.rect.y - 4 * self.radius
+        if self.pos.y + self.radius > SCREEN_HEIGHT:
+            self.pos.y = 2 * SCREEN_HEIGHT - self.pos.y - 2 * self.radius
             self.vel.y *= -1
 
         # bat hit
-        if self.rect.colliderect(players[0].rect):
-            if self.rect.center[0] - players[0].rect.center[0] == 0:
-                self.vel.y *= -1
-            else:
-                crit = math.atan(players[0].height / players[0].width)
-                angle = math.atan((self.rect.center[1] - players[0].rect.center[1]) / (self.rect.center[0] - players[0].rect.center[0]))
-                if abs(angle) < crit:
-                    self.vel.x = abs(self.vel.x)
+        for player in players:
+            closest_x = max(player.rect.left, min(self.pos.x, player.rect.right))
+            closest_y = max(player.rect.top, min(self.pos.y, player.rect.bottom))
+            
+            dx = self.pos.x - closest_x
+            dy = self.pos.y - closest_y
+            
+            if (dx**2 + dy**2) < self.radius**2:
+                if abs(dx) > abs(dy):
+                    self.vel.x *= -1;
+                    self.pos.x = closest_x + (self.radius if dx > 0 else -self.radius);
                 else:
-                    self.vel.y *= -1
-        if self.rect.colliderect(players[1].rect):
-            if self.rect.center[0] - players[1].rect.center[0] == 0:
-                self.vel.y *= -1
-            else:
-                crit = math.atan(players[1].height / players[1].width)
-                angle = math.atan((self.rect.center[1] - players[1].rect.center[1]) / (self.rect.center[0] - players[1].rect.center[0]))
-                if abs(angle) < crit:
-                    self.vel.x = -abs(self.vel.x)
-                else:
-                    self.vel.y *= -1
+                    self.vel.y *= -1;
+                    self.pos.y = closest_y + (self.radius if dy > 0 else -self.radius);
 
         # score
-        if self.rect.x < 0:
+        if self.pos.x - self.radius < 0:
             return 1
-        if self.rect.x + 2 * self.radius > SCREEN_WIDTH:
+        if self.pos.x + self.radius > SCREEN_WIDTH:
             return 0
         return -1
 
     def reset(self):
-        self.rect.x = self.orig[0]
-        self.rect.y = self.orig[1]
+        self.pos.x = self.orig[0]
+        self.pos.y = self.orig[1]
         self.vel.update(random.random() - 0.5, random.random() - 0.5)
         self.vel.scale_to_length(self.speed)
     
     def draw(self):
-        pygame.draw.circle(screen, self.colour, self.rect.center, self.radius)
+        pygame.draw.circle(screen, self.colour, self.pos, self.radius)
 
 players = [Player(SCREEN_WIDTH * 0.1, SCREEN_HEIGHT * 0.5, SCREEN_WIDTH * 0.04, SCREEN_HEIGHT * 0.25),
            Player(SCREEN_WIDTH * 0.9, SCREEN_HEIGHT * 0.5, SCREEN_WIDTH * 0.04, SCREEN_HEIGHT * 0.25)]
