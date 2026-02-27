@@ -6,6 +6,12 @@ from gymnasium.utils.env_checker import check_env
 OPPONENT = 0
 AGENT = 1
 
+"""
+Reward system:
+    Hitting ball = +1 (-1 for top/bottom)
+    Scoring      = +5 (-5 for conceding)
+"""
+
 class GameEnv(gym.Env):
     def __init__(self, init_speed=600, max_speed=3000, friction=1, restitution=15, force=10000):
         self.width = 1280
@@ -17,7 +23,6 @@ class GameEnv(gym.Env):
         self.max_speed = max_speed
         self.friction = friction
         self.restitution = restitution
-        self.force = force
 
         self.agent = np.array([self.width * 0.9, 0], dtype=np.float64)
         self.agent_vy = 0
@@ -43,7 +48,7 @@ class GameEnv(gym.Env):
     def _get_info(self):
         return {"distance": np.linalg.norm(self.ball_pos - self.agent, ord=2)}
 
-    def reset(self, options=None, seed=42):
+    def reset(self, options=None, seed=None):
         super().reset(seed=seed)
 
         self.agent[1] = self.np_random.uniform(0, self.height - self.pad_height)
@@ -59,15 +64,24 @@ class GameEnv(gym.Env):
         truncated = False
         observation = self._get_obs()
         info = self._get_info()
-
         return observation, self.reward, terminated, truncated, info
 
-    def draw(self):
-        self.screen.fill("white")
-        pygame.draw.rect(self.screen, "black", pygame.Rect(self.opp[0], self.opp[1], self.pad_width, self.pad_height))
-        pygame.draw.rect(self.screen, "black", pygame.Rect(self.agent[0], self.agent[1], self.pad_width, self.pad_height))
-        pygame.draw.circle(self.screen, "black", self.ball.pos, self.ball.radius)
+    def render(self):
+        pygame.init()
+        pygame.display.set_caption("Pong")
+        screen = pygame.display.set_mode((self.width, self.height))
+        screen.fill("white")
+        pygame.draw.rect(screen, "black", pygame.Rect(self.opp[0], self.opp[1], self.pad_width, self.pad_height))
+        pygame.draw.rect(screen, "black", pygame.Rect(self.agent[0], self.agent[1], self.pad_width, self.pad_height))
+        pygame.draw.circle(screen, "black", self.ball_pos, self.ball_rad)
         pygame.display.flip()
+        
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    running = False
 
     def check_collisions(self):
         cx = max(self.agent[0], min(self.ball_pos[0], self.agent[0] + self.pad_width))
@@ -111,9 +125,7 @@ class GameEnv(gym.Env):
 
     def _move(self, dt, dir, player):
         if player == OPPONENT: # opponent
-            self.opp_vy += dir * dt * self.force
-            self.opp_vy = max(-self.max_speed, min(self.opp_vy, self.max_speed))
-
+            self.opp_vy = dir * self.init_speed
             self.opp[1] += self.opp_vy * dt
             if self.opp[1] < 0:
                 self.opp[1] = 0
@@ -122,10 +134,8 @@ class GameEnv(gym.Env):
                 self.opp[1] = self.height * self.pad_height
                 self.opp_vy = 0
         else: # agent
-            self.agent_vy += dir * dt * self.force
-            self.agent_vy = max(-self.max_speed, min(self.agent_vy, self.max_speed))
-
-            self.agent[1] += self.opp_vy * dt
+            self.agent_vy = dir * self.init_speed
+            self.agent[1] += self.agent_vy * dt
             if self.agent[1] < 0:
                 self.agent[1] = 0
                 self.agent_vy = 0
@@ -164,6 +174,29 @@ class GameEnv(gym.Env):
         
         self.check_collisions()
         return -1
+    
+def test_env():
+    gym.register(
+        id="Pong-v0",
+        entry_point="agent:GameEnv",
+        max_episode_steps=1000,
+    )
+    env = gym.make("Pong-v0")
+    try:
+        check_env(env.unwrapped)
+        print("Environment passes all checks!")
+        obs, info = env.reset(seed=201)
+        print(f"Starting positions\nAgent: {obs['agent']}\nOpponent: {obs['opponent']}\nBall position: {obs['ball_pos']}\nBall velocity: {obs['ball_vel']}")
+        actions = [0, 1, 1]
+        for action in actions:
+            old_pos = obs["agent"].copy()
+            obs, reward, terminated, truncated, info = env.step(action)
+            new_pos = obs["agent"]
+            print(f"Action {action}: {old_pos} -> {new_pos}, reward={reward}")
+        env.render()
+        env.close()
+    except Exception as e:
+        print(f"Environment has issues: {e}")
 
 if __name__ == "__main__":
     gym.register(
@@ -171,11 +204,6 @@ if __name__ == "__main__":
         entry_point="agent:GameEnv",
         max_episode_steps=1000,
     )
-    gym.pprint_registry()
 
     env = gym.make("Pong-v0")
-    try:
-        check_env(env.unwrapped)
-        print("Environment passes all checks!")
-    except Exception as e:
-        print(f"Environment has issues: {e}")
+    env.close()

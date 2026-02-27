@@ -14,12 +14,8 @@ class Player:
         self.rect = pygame.Rect(x - w/2, y - h/2, w, h)
         self.velocity = 0
 
-    def move(self, dt, a):
-        self.velocity += a * dt * 10000
-        if self.velocity < -self.max_speed:
-            self.velocity = -self.max_speed
-        if self.velocity > self.max_speed:
-            self.velocity = self.max_speed
+    def move(self, dt, dir):
+        self.velocity = dir * self.max_speed
 
         self.rect.y += self.velocity * dt
         if self.rect.y < 0:
