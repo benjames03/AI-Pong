@@ -10,18 +10,19 @@ from models import PolicyModel
 
 class REINFORCE:
     def __init__(self, obs_dims, action_dims):
-        self.lr = 1e-2
-        self.gamma = 0.95
+        self.lr = 5e-4
+        self.gamma = 0.99
         self.eps = 1e-6
 
         self.probs = []
         self.rewards = []
 
-        self.net = PolicyModel(in_dim=obs_dims, hidden_dims=(50, 50) , out_dim=action_dims)
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        self.net = PolicyModel(in_dim=obs_dims, hidden_dims=(30, 30), out_dim=action_dims).to(device)
         self.optimiser = torch.optim.Adam(self.net.parameters(), lr=self.lr, eps=self.eps)
 
     def sample_action(self, state):
-        state = torch.tensor(np.array([state]))
+        state = torch.tensor(state)
         means, stds = self.net(state)
 
         dist = torch.distributions.normal.Normal(means[0] + self.eps, stds[0] + self.eps)
@@ -53,6 +54,10 @@ class REINFORCE:
         self.probs = []
         self.rewards = []
 
+    def save_net(self, filepath):
+        torch.save(self.net.state_dict(), filepath)
+        print(f"Saved PyTorch Model State to {filepath}")
+
 def plot(data):
     plt.rcParams["figure.figsize"] = (10, 5)
     df1 = pd.DataFrame(data).melt()
@@ -60,14 +65,12 @@ def plot(data):
     sns.set_style("darkgrid")
     sns.set_context("talk")
     sns.set_palette("rainbow")
-    sns.lineplot(x="episodes", y="reward", data=df1).set(
-        title="REINFORCE for Pong"
-    )
+    sns.lineplot(x="episodes", y="reward", data=df1).set(title="REINFORCE for Pong")
     plt.show()
 
 if __name__ == "__main__":
-    n_episodes = 250
-    max_steps = 1000
+    n_episodes = 100
+    max_steps = 500
 
     gym.register(id="Pong-v0", entry_point="game:GameEnv", max_episode_steps=max_steps)
     env = gym.make("Pong-v0")
@@ -77,7 +80,7 @@ if __name__ == "__main__":
     action_dims = 1 # env.action_space.shape[0]
     rewards_over_seeds = []
 
-    for seed in [1, 2, 4]:
+    for seed in [3]:
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
@@ -100,9 +103,10 @@ if __name__ == "__main__":
             reward_over_episodes.append(wrapped_env.return_queue[-1])
             agent.update()
 
-            if episode % 10 == 0:
+            if episode % 25 == 0:
                 avg_reward = int(np.mean(wrapped_env.return_queue))
                 print("Episode:", episode, "Average Reward:", avg_reward)
 
         rewards_over_seeds.append(reward_over_episodes)
+        # agent.save_net("../models/test.pth")
     plot(rewards_over_seeds)

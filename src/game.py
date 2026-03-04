@@ -6,7 +6,7 @@ from gymnasium.utils.env_checker import check_env
 """
 Reward system:
     Hitting ball = +1 (-1 for top/bottom)
-    Scoring      = +5 (-5 for conceding)
+    Scoring      = +10 (-10 for conceding)
 """
 
 class GameEnv(gym.Env):
@@ -20,6 +20,9 @@ class GameEnv(gym.Env):
         self.max_speed = max_speed
         self.friction = friction
         self.restitution = restitution
+
+        self.max = 0
+        self.min = 0
 
         self.agent = np.array([self.width * 0.9, 0], dtype=np.float32)
         self.agent_vy = 0
@@ -52,7 +55,7 @@ class GameEnv(gym.Env):
 
     def reset(self, options=None, seed=None):
         super().reset(seed=seed)
-
+        self.reward = 0
         self.agent[1] = self.np_random.uniform(0, self.height - self.pad_height)
         self.opp[1] = self.np_random.uniform(0, self.height - self.pad_height)
         self.ball_pos = self.np_random.uniform(np.array([self.opp[0] + self.pad_width + self.ball_rad, self.ball_rad]), np.array([self.agent[0] - self.ball_rad, self.height - self.ball_rad]), size=2).astype(np.float32)
@@ -99,7 +102,7 @@ class GameEnv(gym.Env):
                 self.ball_vel[1] += self.opp_vy * self.friction
                 self.ball_vel = self.ball_vel * (min(self.max_speed, v + abs(self.agent_vy) * self.restitution / self.max_speed)) / np.linalg.norm(self.ball_vel, ord=2)
                 self.ball_pos[0] = cx + (self.ball_rad if dx > 0 else -self.ball_rad)
-                self.reward += 10
+                self.reward += 1
             else:
                 self.ball_vel[1] *= -1
                 self.ball_pos[1] = cy + (self.ball_rad if dy > 0 else -self.ball_rad)
@@ -153,7 +156,7 @@ class GameEnv(gym.Env):
         #     self._move(dt, 1, 0)
 
         # agent
-        if action == 0:
+        if action <= 0:
             self._move(dt, -1, 1)
         else:
             self._move(dt, 1, 1)
@@ -169,10 +172,10 @@ class GameEnv(gym.Env):
 
         # score
         if self.ball_pos[0] - self.ball_rad < 0:
-            self.reward += 1
+            self.reward += 10
             return 1 # agent
         if self.ball_pos[0] + self.ball_rad > self.width:
-            self.reward -= 1
+            self.reward -= 10
             return 0 # opponent
         
         self.check_collisions()
@@ -189,7 +192,6 @@ def test_env():
         check_env(env.unwrapped)
         print("Environment passes all checks!")
         obs, info = env.reset(seed=8)
-        print(obs)
         # print(f"Starting positions\nAgent: {obs['agent']}\nOpponent: {obs['opponent']}\nBall position: {obs['ball_pos']}\nBall velocity: {obs['ball_vel']}")
         # actions = [0, 1, 1]
         # for action in actions:

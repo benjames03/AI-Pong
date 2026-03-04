@@ -1,4 +1,8 @@
-import pygame, random
+import pygame
+import random
+import models
+import torch
+import numpy as np
 
 WIDTH, HEIGHT = 1280, 720
 
@@ -29,6 +33,27 @@ class Player:
         self.rect.x = self.orig[0]
         self.rect.y = self.orig[1]
         self.velocity = 0
+
+class Agent(Player):
+    def __init__(self, x, y, w, h, v):
+        super().__init__(x, y, w, h, v, None, None)
+        self.net = None
+
+    def _move(self, dt, state):
+        state = torch.tensor(state)
+        means, stds = self.net(state)
+
+        dist = torch.distributions.normal.Normal(means[0] + 1e-6, stds[0] + 1e-6)
+        action = dist.sample().numpy()
+        if action <= 0:
+            self.move(dt, -1)
+        else:
+            self.move(dt, 1)
+
+    def load(self, filepath):
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        self.net = models.PolicyModel(in_dim=6, hidden_dims=(30, 30), out_dim=1).to(device)
+        self.net.load_state_dict(torch.load(filepath, weights_only=True))
 
 class Ball:
     def __init__(self, x, y, r, vi, vm):
@@ -78,14 +103,18 @@ class Game:
         self.waiting = True
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
-        self.players = (Player(WIDTH * 0.1, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed, pygame.K_w, pygame.K_s),
-                        Player(WIDTH * 0.9, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed, pygame.K_PAGEUP, pygame.K_PAGEDOWN))
+        self.player1 = Player(WIDTH * 0.1, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed, pygame.K_w, pygame.K_s)
+        self.player2 = Player(WIDTH * 0.9, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed, pygame.K_PAGEUP, pygame.K_PAGEDOWN)
+        # self.player2 = Agent(WIDTH * 0.9, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed)
         self.ball = Ball(WIDTH/2, HEIGHT/2, WIDTH * 0.02, init_speed, max_speed)
+
+    def get_state(self):
+        return np.array([self.player2.rect.y, self.player1.rect.y, self.ball.pos.x - self.player2.rect.x, self.ball.pos.y - self.player2.rect.y, self.ball.vel.x, self.ball.vel.y], dtype=np.float32)
 
     def draw(self):
         self.screen.fill("white")
-        pygame.draw.rect(self.screen, "black", self.players[0].rect)
-        pygame.draw.rect(self.screen, "black", self.players[1].rect)
+        pygame.draw.rect(self.screen, "black", self.player1.rect)
+        pygame.draw.rect(self.screen, "black", self.player2.rect)
         pygame.draw.circle(self.screen, "black", self.ball.pos, self.ball.radius)
 
         if pygame.font:
@@ -96,14 +125,14 @@ class Game:
                 self.screen.blit(text, pos)
             # else:
             font = pygame.font.Font(None, 64)
-            text = font.render(f"{self.players[0].score} - {self.players[1].score}", True, "black")
+            text = font.render(f"{self.player1.score} - {self.player2.score}", True, "black")
             pos = text.get_rect(centerx=self.screen.get_width()/2, y=10)
             self.screen.blit(text, pos)
 
         pygame.display.flip()
 
     def check_collisions(self):
-        for player in self.players:
+        for player in [self.player1, self.player2]:
             cx = max(player.rect.left, min(self.ball.pos.x, player.rect.right))
             cy = max(player.rect.top, min(self.ball.pos.y, player.rect.bottom))
             
@@ -126,7 +155,10 @@ class Game:
         keys = pygame.key.get_pressed()
 
         # bats
-        for player in self.players:
+        players = [self.player1]
+        if self.player2.up != None:
+            players.append(self.player2)
+        for player in players:
             if keys[player.up]:
                 player.move(dt, -1)
             if keys[player.down]:
@@ -134,17 +166,24 @@ class Game:
             if not keys[player.up] and not keys[player.down]:
                 player.velocity = 0
 
+        if self.player2.up == None:
+            state = self.get_state()
+            self.player2._move(dt, state)
+
         # ball
         score = self.ball.move(dt)
         if score != -1:
             self.ball.reset()
-            self.players[0].reset()
-            self.players[1].reset()
-            self.players[score].score += 1
+            self.player1.reset()
+            self.player2.reset()
             self.waiting = True
-            if self.players[score].score == self.max_score:
-                self.players[0].score = 0
-                self.players[1].score = 0
+            if score == 0: # player 1
+                self.player1.score += 1
+            else:
+                self.player2.score += 1
+            if self.player1.score >= self.max_score or self.player2.score >= self.max_score:
+                self.player1.score = 0
+                self.player2.score = 0
                 return score
         
         self.check_collisions()
@@ -169,6 +208,11 @@ class Game:
             self.draw()
         pygame.quit()
 
+    def load_agent(self, filepath):
+        self.player2 = Agent(WIDTH * 0.9, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, self.init_speed)
+        self.player2.load(filepath)
+
 if __name__ == "__main__":
     game = Game()
+    game.load_agent("../models/test.pth")
     game.run()
