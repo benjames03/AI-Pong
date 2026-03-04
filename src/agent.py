@@ -5,7 +5,6 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import random
-from tqdm import tqdm
 from models import PolicyModel
 
 class REINFORCE:
@@ -23,9 +22,9 @@ class REINFORCE:
 
     def sample_action(self, state):
         state = torch.tensor(state)
-        means, stds = self.net(state)
+        probs = self.net(state)
 
-        dist = torch.distributions.normal.Normal(means[0] + self.eps, stds[0] + self.eps)
+        dist = torch.distributions.Categorical(probs)
         action = dist.sample()
         prob = dist.log_prob(action)
 
@@ -77,7 +76,7 @@ if __name__ == "__main__":
     wrapped_env = gym.wrappers.RecordEpisodeStatistics(env, buffer_length=n_episodes)
 
     obs_dims = 6 # env.observation_space.shape[0]
-    action_dims = 1 # env.action_space.shape[0]
+    action_dims = 2 # env.action_space.shape[0]
     rewards_over_seeds = []
 
     for seed in [3]:
@@ -108,5 +107,5 @@ if __name__ == "__main__":
                 print("Episode:", episode, "Average Reward:", avg_reward)
 
         rewards_over_seeds.append(reward_over_episodes)
-        # agent.save_net("../models/test.pth")
+        agent.save_net("../models/test.pth")
     plot(rewards_over_seeds)

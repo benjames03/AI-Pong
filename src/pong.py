@@ -3,6 +3,7 @@ import random
 import models
 import torch
 import numpy as np
+import os
 
 WIDTH, HEIGHT = 1280, 720
 
@@ -41,18 +42,18 @@ class Agent(Player):
 
     def _move(self, dt, state):
         state = torch.tensor(state)
-        means, stds = self.net(state)
+        probs = self.net(state)
 
-        dist = torch.distributions.normal.Normal(means[0] + 1e-6, stds[0] + 1e-6)
+        dist = torch.distributions.Categorical(probs)
         action = dist.sample().numpy()
-        if action <= 0:
+        if action == 0:
             self.move(dt, -1)
         else:
             self.move(dt, 1)
 
     def load(self, filepath):
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        self.net = models.PolicyModel(in_dim=6, hidden_dims=(30, 30), out_dim=1).to(device)
+        self.net = models.PolicyModel(in_dim=6, hidden_dims=(30, 30), out_dim=2).to(device)
         self.net.load_state_dict(torch.load(filepath, weights_only=True))
 
 class Ball:
@@ -105,7 +106,6 @@ class Game:
         self.clock = pygame.time.Clock()
         self.player1 = Player(WIDTH * 0.1, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed, pygame.K_w, pygame.K_s)
         self.player2 = Player(WIDTH * 0.9, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed, pygame.K_PAGEUP, pygame.K_PAGEDOWN)
-        # self.player2 = Agent(WIDTH * 0.9, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, init_speed)
         self.ball = Ball(WIDTH/2, HEIGHT/2, WIDTH * 0.02, init_speed, max_speed)
 
     def get_state(self):
@@ -179,7 +179,7 @@ class Game:
             self.waiting = True
             if score == 0: # player 1
                 self.player1.score += 1
-            else:
+            else: # player 2 / agent
                 self.player2.score += 1
             if self.player1.score >= self.max_score or self.player2.score >= self.max_score:
                 self.player1.score = 0
@@ -209,6 +209,9 @@ class Game:
         pygame.quit()
 
     def load_agent(self, filepath):
+        if not os.path.exists(filepath):
+            print("File doesn't exist")
+            return
         self.player2 = Agent(WIDTH * 0.9, HEIGHT * 0.5, WIDTH * 0.04, HEIGHT * 0.25, self.init_speed)
         self.player2.load(filepath)
 

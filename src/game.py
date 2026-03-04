@@ -32,26 +32,16 @@ class GameEnv(gym.Env):
         self.ball_vel = np.array([0, 0], dtype=np.float32)
         self.reward = 0
 
-        # self.observation_space = gym.spaces.Dict(
-        #     {
-        #         "agent": gym.spaces.Box(0, self.height - self.pad_height, shape=(1,), dtype=np.float32),
-        #         "opponent": gym.spaces.Box(0, self.height - self.pad_height, shape=(1,), dtype=np.float32),
-        #         "ball_pos": gym.spaces.Box(np.array([self.ball_rad - self.agent[0], self.pad_height + self.ball_rad - self.height]), np.array([self.width - self.agent[0] - self.ball_rad, self.height - self.ball_rad]), dtype=np.float32),
-        #         "ball_vel": gym.spaces.Box(-self.max_speed, self.max_speed, shape=(2,), dtype=np.float32),
-        #     }
-        # )
         self.observation_space = gym.spaces.Box(np.array([0, 0, self.ball_rad - self.agent[0], self.pad_height + self.ball_rad - self.height, -self.max_speed, -self.max_speed]), 
                                                 np.array([self.height - self.pad_height, self.height - self.pad_height, self.width - self.agent[0] - self.ball_rad, self.height - self.ball_rad, self.max_speed, self.max_speed]), shape=(6,), dtype=np.float32)
         self.action_space = gym.spaces.Discrete(2) #, seed=42)
 
     def _get_obs(self):
-        # return {"agent": np.array([self.agent[1]]), "opponent": np.array([self.opp[1]]), "ball_pos": self.ball_pos - self.agent, "ball_vel": self.ball_vel}
         rel_ball_pos = self.ball_pos - self.agent
         return np.array([self.agent[1], self.opp[1], rel_ball_pos[0], rel_ball_pos[1], self.ball_vel[0], self.ball_vel[1]])
 
     def _get_info(self):
         return {"distance": np.linalg.norm(self.ball_pos - self.agent, ord=2)}
-        # return np.linalg.norm(self.ball_pos - self.agent, ord=2)
 
     def reset(self, options=None, seed=None):
         super().reset(seed=seed)
@@ -156,7 +146,7 @@ class GameEnv(gym.Env):
         #     self._move(dt, 1, 0)
 
         # agent
-        if action <= 0:
+        if action == 0:
             self._move(dt, -1, 1)
         else:
             self._move(dt, 1, 1)
