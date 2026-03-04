@@ -21,37 +21,42 @@ class GameEnv(gym.Env):
         self.friction = friction
         self.restitution = restitution
 
-        self.agent = np.array([self.width * 0.9, 0], dtype=np.float64)
+        self.agent = np.array([self.width * 0.9, 0], dtype=np.float32)
         self.agent_vy = 0
-        self.opp = np.array([self.width * 0.1 - self.pad_width, 0], dtype=np.float64)
+        self.opp = np.array([self.width * 0.1 - self.pad_width, 0], dtype=np.float32)
         self.opp_vy = 0
-        self.ball_pos = np.array([0, 0], dtype=np.float64)
-        self.ball_vel = np.array([0, 0], dtype=np.float64)
+        self.ball_pos = np.array([0, 0], dtype=np.float32)
+        self.ball_vel = np.array([0, 0], dtype=np.float32)
         self.reward = 0
 
-        self.observation_space = gym.spaces.Dict(
-            {
-                "agent": gym.spaces.Box(0, self.height - self.pad_height, shape=(1,), dtype=np.float64),
-                "opponent": gym.spaces.Box(0, self.height - self.pad_height, shape=(1,), dtype=np.float64),
-                "ball_pos": gym.spaces.Box(np.array([self.ball_rad - self.agent[0], self.pad_height + self.ball_rad - self.height]), np.array([self.width - self.agent[0] - self.ball_rad, self.height - self.ball_rad]), dtype=np.float64),
-                "ball_vel": gym.spaces.Box(-self.max_speed, self.max_speed, shape=(2,), dtype=np.float64),
-            }
-        )
+        # self.observation_space = gym.spaces.Dict(
+        #     {
+        #         "agent": gym.spaces.Box(0, self.height - self.pad_height, shape=(1,), dtype=np.float32),
+        #         "opponent": gym.spaces.Box(0, self.height - self.pad_height, shape=(1,), dtype=np.float32),
+        #         "ball_pos": gym.spaces.Box(np.array([self.ball_rad - self.agent[0], self.pad_height + self.ball_rad - self.height]), np.array([self.width - self.agent[0] - self.ball_rad, self.height - self.ball_rad]), dtype=np.float32),
+        #         "ball_vel": gym.spaces.Box(-self.max_speed, self.max_speed, shape=(2,), dtype=np.float32),
+        #     }
+        # )
+        self.observation_space = gym.spaces.Box(np.array([0, 0, self.ball_rad - self.agent[0], self.pad_height + self.ball_rad - self.height, -self.max_speed, -self.max_speed]), 
+                                                np.array([self.height - self.pad_height, self.height - self.pad_height, self.width - self.agent[0] - self.ball_rad, self.height - self.ball_rad, self.max_speed, self.max_speed]), shape=(6,), dtype=np.float32)
         self.action_space = gym.spaces.Discrete(2) #, seed=42)
 
     def _get_obs(self):
-        return {"agent": np.array([self.agent[1]]), "opponent": np.array([self.opp[1]]), "ball_pos": self.ball_pos - self.agent, "ball_vel": self.ball_vel}
+        # return {"agent": np.array([self.agent[1]]), "opponent": np.array([self.opp[1]]), "ball_pos": self.ball_pos - self.agent, "ball_vel": self.ball_vel}
+        rel_ball_pos = self.ball_pos - self.agent
+        return np.array([self.agent[1], self.opp[1], rel_ball_pos[0], rel_ball_pos[1], self.ball_vel[0], self.ball_vel[1]])
 
     def _get_info(self):
         return {"distance": np.linalg.norm(self.ball_pos - self.agent, ord=2)}
+        # return np.linalg.norm(self.ball_pos - self.agent, ord=2)
 
     def reset(self, options=None, seed=None):
         super().reset(seed=seed)
 
         self.agent[1] = self.np_random.uniform(0, self.height - self.pad_height)
         self.opp[1] = self.np_random.uniform(0, self.height - self.pad_height)
-        self.ball_pos = self.np_random.uniform(np.array([self.opp[0] + self.pad_width + self.ball_rad, self.ball_rad]), np.array([self.agent[0] - self.ball_rad, self.height - self.ball_rad]), size=2)
-        self.ball_vel = self.np_random.uniform(-self.init_speed, self.init_speed, size=2)
+        self.ball_pos = self.np_random.uniform(np.array([self.opp[0] + self.pad_width + self.ball_rad, self.ball_rad]), np.array([self.agent[0] - self.ball_rad, self.height - self.ball_rad]), size=2).astype(np.float32)
+        self.ball_vel = self.np_random.uniform(-self.init_speed, self.init_speed, size=2).astype(np.float32)
 
         return self._get_obs(), self._get_info()
 
@@ -68,9 +73,9 @@ class GameEnv(gym.Env):
         pygame.display.set_caption("Pong")
         screen = pygame.display.set_mode((self.width, self.height))
         screen.fill("white")
-        pygame.draw.rect(screen, "black", pygame.Rect(self.opp[0], self.opp[1], self.pad_width, self.pad_height))
-        pygame.draw.rect(screen, "black", pygame.Rect(self.agent[0], self.agent[1], self.pad_width, self.pad_height))
-        pygame.draw.circle(screen, "black", self.ball_pos, self.ball_rad)
+        pygame.draw.rect(screen, "black", pygame.Rect(self.opp[0].item(), self.opp[1].item(), self.pad_width, self.pad_height))
+        pygame.draw.rect(screen, "black", pygame.Rect(self.agent[0].item(), self.agent[1].item(), self.pad_width, self.pad_height))
+        pygame.draw.circle(screen, "black", pygame.Vector2(self.ball_pos[0], self.ball_pos[1]), self.ball_rad)
         pygame.display.flip()
         
         running = True
@@ -94,7 +99,7 @@ class GameEnv(gym.Env):
                 self.ball_vel[1] += self.opp_vy * self.friction
                 self.ball_vel = self.ball_vel * (min(self.max_speed, v + abs(self.agent_vy) * self.restitution / self.max_speed)) / np.linalg.norm(self.ball_vel, ord=2)
                 self.ball_pos[0] = cx + (self.ball_rad if dx > 0 else -self.ball_rad)
-                self.reward += 1
+                self.reward += 10
             else:
                 self.ball_vel[1] *= -1
                 self.ball_pos[1] = cy + (self.ball_rad if dy > 0 else -self.ball_rad)
@@ -142,10 +147,10 @@ class GameEnv(gym.Env):
 
     def update(self, dt, action):
         # opponent
-        if self.ball_pos[1] < self.opp[1]:
-            self._move(dt, -1, 0)
-        if self.ball_pos[1] > self.opp[1] + self.pad_height:
-            self._move(dt, 1, 0)
+        # if self.ball_pos[1] < self.opp[1]:
+        #     self._move(dt, -1, 0)
+        # if self.ball_pos[1] > self.opp[1] + self.pad_height:
+        #     self._move(dt, 1, 0)
 
         # agent
         if action == 0:
@@ -164,10 +169,10 @@ class GameEnv(gym.Env):
 
         # score
         if self.ball_pos[0] - self.ball_rad < 0:
-            self.reward += 5
+            self.reward += 1
             return 1 # agent
         if self.ball_pos[0] + self.ball_rad > self.width:
-            self.reward -= 5
+            self.reward -= 1
             return 0 # opponent
         
         self.check_collisions()
@@ -176,21 +181,22 @@ class GameEnv(gym.Env):
 def test_env():
     gym.register(
         id="Pong-v0",
-        entry_point="agent:GameEnv",
+        entry_point="game:GameEnv",
         max_episode_steps=1000,
     )
     env = gym.make("Pong-v0")
     try:
         check_env(env.unwrapped)
         print("Environment passes all checks!")
-        obs, info = env.reset(seed=201)
-        print(f"Starting positions\nAgent: {obs['agent']}\nOpponent: {obs['opponent']}\nBall position: {obs['ball_pos']}\nBall velocity: {obs['ball_vel']}")
-        actions = [0, 1, 1]
-        for action in actions:
-            old_pos = obs["agent"].copy()
-            obs, reward, terminated, truncated, info = env.step(action)
-            new_pos = obs["agent"]
-            print(f"Action {action}: {old_pos} -> {new_pos}, reward={reward}")
+        obs, info = env.reset(seed=8)
+        print(obs)
+        # print(f"Starting positions\nAgent: {obs['agent']}\nOpponent: {obs['opponent']}\nBall position: {obs['ball_pos']}\nBall velocity: {obs['ball_vel']}")
+        # actions = [0, 1, 1]
+        # for action in actions:
+        #     old_pos = obs[0:2].copy()
+        #     obs, reward, terminated, truncated, info = env.step(action)
+        #     new_pos = obs[0:2]
+        #     print(f"Action {action}: {old_pos} -> {new_pos}, reward={reward}")
         env.render()
         env.close()
     except Exception as e:

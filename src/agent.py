@@ -1,58 +1,108 @@
-from collections import defaultdict
 import gymnasium as gym
+import torch
 import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import random
 from tqdm import tqdm
+from models import PolicyModel
 
-class PongAgent:
-    def __init__(self, env, lr, init_epsilon, epsilon_decay, final_epsilon, discount=0.95):
-        self.env = env
-        self.q_values = defaultdict(lambda: np.zeros(env.action_space.n))
-        self.lr = lr
-        self.discount = discount
-        self.epsilon = init_epsilon
-        self.epsilon_decay = epsilon_decay
-        self.final_epsilon = final_epsilon
-        self.training_error = []
+class REINFORCE:
+    def __init__(self, obs_dims, action_dims):
+        self.lr = 1e-2
+        self.gamma = 0.95
+        self.eps = 1e-6
 
-    def get_action(self, obs):
-        if np.random.random() < self.epsilon:
-            return self.env.action_space.sample()
-        else:
-            return int(np.argmax(self.q_values[obs]))
+        self.probs = []
+        self.rewards = []
 
-    def update(self, obs, action, reward, terminated, next_obs):
-        future_q_value = (not terminated) * np.max(self.q_values[next_obs])
-        target = reward + self.discount * future_q_value
-        temporal_diff = target - self.q_values[obs][action]
+        self.net = PolicyModel(in_dim=obs_dims, hidden_dims=(50, 50) , out_dim=action_dims)
+        self.optimiser = torch.optim.Adam(self.net.parameters(), lr=self.lr, eps=self.eps)
 
-        self.q_values[obs][action] = (self.q_values[obs][action] + self.lr * temporal_diff)
-        self.training_error.append(temporal_diff)
+    def sample_action(self, state):
+        state = torch.tensor(np.array([state]))
+        means, stds = self.net(state)
 
-    def decay_epsilon(self):
-        self.epsilon = max(self.final_epsilon, self.epsilon - self.epsilon_decay)
+        dist = torch.distributions.normal.Normal(means[0] + self.eps, stds[0] + self.eps)
+        action = dist.sample()
+        prob = dist.log_prob(action)
+
+        action = action.numpy()
+
+        self.probs.append(prob)
+
+        return action
+
+    def update(self):
+        running_g = 0
+        gs = []
+
+        for R in self.rewards[::-1]:
+            running_g = R + self.gamma * running_g
+            gs.insert(0, running_g)
+
+        deltas = torch.tensor(gs)
+        log_probs = torch.stack(self.probs).squeeze()
+        loss = -torch.sum(log_probs * deltas)
+
+        self.optimiser.zero_grad()
+        loss.backward()
+        self.optimiser.step()
+
+        self.probs = []
+        self.rewards = []
+
+def plot(data):
+    plt.rcParams["figure.figsize"] = (10, 5)
+    df1 = pd.DataFrame(data).melt()
+    df1.rename(columns={"variable": "episodes", "value": "reward"}, inplace=True)
+    sns.set_style("darkgrid")
+    sns.set_context("talk")
+    sns.set_palette("rainbow")
+    sns.lineplot(x="episodes", y="reward", data=df1).set(
+        title="REINFORCE for Pong"
+    )
+    plt.show()
 
 if __name__ == "__main__":
-    lr = 0.01
-    n_episodes = 100
-    start_epsilon = 1.0
-    epsilon_decay = start_epsilon / (n_episodes / 2)
-    final_epsilon = 0.1
+    n_episodes = 250
+    max_steps = 1000
 
-    gym.register(id="Pong-v0", entry_point="game:GameEnv", max_episode_steps=100)
+    gym.register(id="Pong-v0", entry_point="game:GameEnv", max_episode_steps=max_steps)
     env = gym.make("Pong-v0")
-    env = gym.wrappers.RecordEpisodeStatistics(env, buffer_length=n_episodes)
-    agent = PongAgent(env=env, lr=lr, init_epsilon=start_epsilon, epsilon_decay=epsilon_decay, final_epsilon=final_epsilon)
+    wrapped_env = gym.wrappers.RecordEpisodeStatistics(env, buffer_length=n_episodes)
 
-    print(agent.q_values)
-    # for episode in tqdm(range(n_episodes)):
-    #     obs, info = env.reset()
-    #     done = False
-    #     while not done:
-    #         action = agent.get_action(obs)
-    #         next_obs, reward, terminated, truncated, info = env.step(action)
-    #         agent.update(obs, action, reward, terminated, next_obs)
-    #         done = terminated or truncated
-    #         obs = next_obs
-    #     agent.decay_epsilon()
+    obs_dims = 6 # env.observation_space.shape[0]
+    action_dims = 1 # env.action_space.shape[0]
+    rewards_over_seeds = []
 
-    env.close()
+    for seed in [1, 2, 4]:
+        torch.manual_seed(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+
+        agent = REINFORCE(obs_dims, action_dims)
+        reward_over_episodes = []
+
+        for episode in range(n_episodes):
+            obs, info = wrapped_env.reset(seed=seed)
+
+            done = False
+            while not done:
+                action = agent.sample_action(obs)
+
+                obs, reward, terminated, truncated, info = wrapped_env.step(action)
+                agent.rewards.append(reward)
+
+                done = terminated or truncated
+
+            reward_over_episodes.append(wrapped_env.return_queue[-1])
+            agent.update()
+
+            if episode % 10 == 0:
+                avg_reward = int(np.mean(wrapped_env.return_queue))
+                print("Episode:", episode, "Average Reward:", avg_reward)
+
+        rewards_over_seeds.append(reward_over_episodes)
+    plot(rewards_over_seeds)
