@@ -10,7 +10,7 @@ Reward system:
 """
 
 class GameEnv(gym.Env):
-    def __init__(self, init_speed=600, max_speed=3000, friction=1, restitution=15, force=10000):
+    def __init__(self, init_speed=600, max_speed=3000, friction=1, restitution=15):
         self.width = 1280
         self.height = 720
         self.pad_width = self.width * 0.04
@@ -20,9 +20,6 @@ class GameEnv(gym.Env):
         self.max_speed = max_speed
         self.friction = friction
         self.restitution = restitution
-
-        self.max = 0
-        self.min = 0
 
         self.agent = np.array([self.width * 0.9, 0], dtype=np.float32)
         self.agent_vy = 0
@@ -34,7 +31,7 @@ class GameEnv(gym.Env):
 
         self.observation_space = gym.spaces.Box(np.array([0, 0, self.ball_rad - self.agent[0], self.pad_height + self.ball_rad - self.height, -self.max_speed, -self.max_speed]), 
                                                 np.array([self.height - self.pad_height, self.height - self.pad_height, self.width - self.agent[0] - self.ball_rad, self.height - self.ball_rad, self.max_speed, self.max_speed]), shape=(6,), dtype=np.float32)
-        self.action_space = gym.spaces.Discrete(2) #, seed=42)
+        self.action_space = gym.spaces.Discrete(3) #, seed=42)
 
     def _get_obs(self):
         rel_ball_pos = self.ball_pos - self.agent
@@ -92,11 +89,11 @@ class GameEnv(gym.Env):
                 self.ball_vel[1] += self.opp_vy * self.friction
                 self.ball_vel = self.ball_vel * (min(self.max_speed, v + abs(self.agent_vy) * self.restitution / self.max_speed)) / np.linalg.norm(self.ball_vel, ord=2)
                 self.ball_pos[0] = cx + (self.ball_rad if dx > 0 else -self.ball_rad)
-                self.reward += 1
+                self.reward += 0.1
             else:
                 self.ball_vel[1] *= -1
                 self.ball_pos[1] = cy + (self.ball_rad if dy > 0 else -self.ball_rad)
-                self.reward -= 1
+                self.reward -= 0.1
             return 1 # agent
 
         cx = max(self.opp[0], min(self.ball_pos[0], self.opp[0] + self.pad_width))
@@ -140,16 +137,13 @@ class GameEnv(gym.Env):
 
     def update(self, dt, action):
         # opponent
-        # if self.ball_pos[1] < self.opp[1]:
-        #     self._move(dt, -1, 0)
-        # if self.ball_pos[1] > self.opp[1] + self.pad_height:
-        #     self._move(dt, 1, 0)
+        if self.ball_pos[1] < self.opp[1]:
+            self._move(dt, -1, 0)
+        if self.ball_pos[1] > self.opp[1] + self.pad_height:
+            self._move(dt, 1, 0)
 
         # agent
-        if action == 0:
-            self._move(dt, -1, 1)
-        else:
-            self._move(dt, 1, 1)
+        self._move(dt, action, 1)
 
         # ball
         self.ball_pos += self.ball_vel * dt
@@ -162,10 +156,10 @@ class GameEnv(gym.Env):
 
         # score
         if self.ball_pos[0] - self.ball_rad < 0:
-            self.reward += 10
+            self.reward += 1
             return 1 # agent
         if self.ball_pos[0] + self.ball_rad > self.width:
-            self.reward -= 10
+            self.reward -= 1
             return 0 # opponent
         
         self.check_collisions()

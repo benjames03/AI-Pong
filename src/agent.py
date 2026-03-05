@@ -6,22 +6,24 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import random
 from models import PolicyModel
+import time
 
 class REINFORCE:
     def __init__(self, obs_dims, action_dims):
-        self.lr = 5e-4
+        self.lr = 1e-3
         self.gamma = 0.99
-        self.eps = 1e-6
+        self.eps = 1e-8
 
         self.probs = []
         self.rewards = []
 
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        self.net = PolicyModel(in_dim=obs_dims, hidden_dims=(30, 30), out_dim=action_dims).to(device)
+        self.net = PolicyModel().to(device)
         self.optimiser = torch.optim.Adam(self.net.parameters(), lr=self.lr, eps=self.eps)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimiser, T_0=10, eta_min=1e-4)
 
     def sample_action(self, state):
-        state = torch.tensor(state)
+        state = torch.tensor(np.array([state], dtype=np.float32))
         probs = self.net(state)
 
         dist = torch.distributions.Categorical(probs)
@@ -32,7 +34,7 @@ class REINFORCE:
 
         self.probs.append(prob)
 
-        return action
+        return action-1
 
     def update(self):
         running_g = 0
@@ -49,6 +51,7 @@ class REINFORCE:
         self.optimiser.zero_grad()
         loss.backward()
         self.optimiser.step()
+        self.scheduler.step()
 
         self.probs = []
         self.rewards = []
@@ -68,15 +71,16 @@ def plot(data):
     plt.show()
 
 if __name__ == "__main__":
-    n_episodes = 100
+    n_episodes = 5000
     max_steps = 500
 
+    start = time.time()
     gym.register(id="Pong-v0", entry_point="game:GameEnv", max_episode_steps=max_steps)
     env = gym.make("Pong-v0")
     wrapped_env = gym.wrappers.RecordEpisodeStatistics(env, buffer_length=n_episodes)
 
     obs_dims = 6 # env.observation_space.shape[0]
-    action_dims = 2 # env.action_space.shape[0]
+    action_dims = 3 # env.action_space.shape[0]
     rewards_over_seeds = []
 
     for seed in [3]:
@@ -102,10 +106,11 @@ if __name__ == "__main__":
             reward_over_episodes.append(wrapped_env.return_queue[-1])
             agent.update()
 
-            if episode % 25 == 0:
+            if episode % 250 == 0:
                 avg_reward = int(np.mean(wrapped_env.return_queue))
                 print("Episode:", episode, "Average Reward:", avg_reward)
 
         rewards_over_seeds.append(reward_over_episodes)
-        agent.save_net("../models/test.pth")
+        agent.save_net("../models/r50_redrew.pth")
     plot(rewards_over_seeds)
+    print(f"Completed in {(time.time()-start)/60:.2f}mins")

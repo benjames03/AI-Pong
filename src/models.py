@@ -1,8 +1,7 @@
-import torch
 import torch.nn as nn
 
 class PolicyModel(nn.Module):
-    def __init__(self, in_dim=6, hidden_dims=(25, 25), out_dim=2):
+    def __init__(self, in_dim=6, hidden_dims=(50, 50), out_dim=3):
         super(PolicyModel, self).__init__()
         self.activation = nn.Tanh()
 

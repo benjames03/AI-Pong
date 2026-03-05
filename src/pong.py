@@ -53,7 +53,7 @@ class Agent(Player):
 
     def load(self, filepath):
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        self.net = models.PolicyModel(in_dim=6, hidden_dims=(30, 30), out_dim=2).to(device)
+        self.net = models.PolicyModel().to(device)
         self.net.load_state_dict(torch.load(filepath, weights_only=True))
 
 class Ball:
@@ -217,5 +217,5 @@ class Game:
 
 if __name__ == "__main__":
     game = Game()
-    game.load_agent("../models/test.pth")
+    game.load_agent("../models/r50_redrew.pth")
     game.run()
